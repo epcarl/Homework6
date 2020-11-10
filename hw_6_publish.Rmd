@@ -1,0 +1,295 @@
+---
+title: "Homework_6"
+author: "Erik Carlson, Emmanuel Mendez, Joe Correa, Emily Vasquez"
+date: "11/8/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library("ggplot2")
+library("coefplot")
+```
+
+
+```{r, message=FALSE,echo=FALSE}
+load("acs2017_ny_data.RData")
+```
+
+
+
+```{r}
+acs2017_ny$LABFORCE <- as.factor(acs2017_ny$LABFORCE)
+levels(acs2017_ny$LABFORCE) <- c("NA","Not in LF","in LF")
+
+acs2017_ny$MARST <- as.factor(acs2017_ny$MARST)
+levels(acs2017_ny$MARST) <- c("married spouse present","married spouse absent","separated","divorced","widowed","never married")
+```
+
+What is the difference between "NA" as label and Not in the Labor Force? Make sure you understand. (Hint, look at ages in each group).
+N/A means that they are under the age of 14 as they are not allowed to legally work in the United States 
+Not in the labor force means they are not working or actively seeking for jobs. i.e A stay home mom/dad 
+Labor force includes those between the ages of 15-65  who are either working or actively seeking jobs.
+
+
+```{r}
+acs2017_ny$age_bands <- cut(acs2017_ny$AGE,breaks=c(0,25,35,45,55,65,100))
+tbl_al<-table(acs2017_ny$age_bands,acs2017_ny$LABFORCE)
+tbl_al
+```
+From this aggregated data we wished to find the proportion of individuals in each age range that were in the labor force.
+We did this by making an array for each age range that calculated the proportions by selecting elements from the above table.
+We then created a new dataframe that used the above data to display the relevant proportions. 
+
+
+```{r}
+
+x=c(tbl_al[1,3]/(tbl_al[1,2]+tbl_al[1,3]),
+tbl_al[2,3]/(tbl_al[2,2]+tbl_al[2,3]),
+tbl_al[3,3]/(tbl_al[3,2]+tbl_al[3,3]),
+tbl_al[4,3]/(tbl_al[4,2]+tbl_al[4,3]),
+tbl_al[5,3]/(tbl_al[5,2]+tbl_al[5,3]),
+tbl_al[6,3]/(tbl_al[6,2]+tbl_al[6,3]))
+
+age_prop_table<-data.frame(row.names=row.names(tbl_al), Prop_labor_force=x)
+age_prop_table
+```
+
+From this it can be seen that the about 63% of individuals in the age range of 55 to 65 are in the labor force. To better visualize the data it was plotted using ggplot2.
+
+```{r}
+ggplot(data=age_prop_table, aes(y=row.names(age_prop_table), x=Prop_labor_force, fill=row.names(age_prop_table))) + 
+  geom_bar(stat="identity") + scale_fill_brewer(palette = "Dark2") +ggtitle("Proportion in Labor Force by Age Range") + theme(legend.position = "none") + labs( x="Age Range", y="Proportion in Labor Force")
+#Spectral
+```
+
+It shows a trend of a lower proportion participating in age 0 to 25, made up primarily of those that are NA due to being below the requisite age of particpation.  Then it maximizes in the range of 25-35 before staying near constant, but still slightly decreasing until age 55.  A segment of the population exits the labor force, most likely due to retirement in the 55-65 age range, however most are still in the labor force.  Then in the age range of 65-100 most individuals likely retire and exit the labor force.
+
+
+```{r }
+pick_use1 <- (acs2017_ny$AGE >25) & (acs2017_ny$AGE <= 55)
+dat_use1 <- subset(acs2017_ny, pick_use1)
+
+dat_use1$LABFORCE <- droplevels(dat_use1$LABFORCE) # actually not necessary since logit is smart enough to drop unused levels, but helps my personal sense of order
+
+```
+
+```{r}
+#Using
+model_logit1 <- glm(LABFORCE ~ AGE + I(AGE^2) + female + AfAm + Asian + race_oth + Hispanic 
+            + educ_hs + educ_somecoll + educ_college + educ_advdeg + FAMSIZE 
+            ,
+            family = binomial, data = dat_use1)
+summary(model_logit1)
+library(stargazer)
+
+stargazer(model_logit1, type="text")
+
+nw_data2<- data.frame(AGE=30, female=0, AfAm=0, Asian=0, race_oth=0, Hispanic=0, educ_hs=0, educ_somecoll=0, educ_college=0, educ_advdeg=0,FAMSIZE=3)
+nw_data3<- data.frame(AGE=30, female=0, AfAm=0, Asian=0, race_oth=0, Hispanic=0, educ_hs=1, educ_somecoll=0, educ_college=0, educ_advdeg=0,FAMSIZE=3)
+nw_data4<- data.frame(AGE=30, female=0, AfAm=0, Asian=0, race_oth=0, Hispanic=0, educ_hs=0, educ_somecoll=1, educ_college=0, educ_advdeg=0,FAMSIZE=3)
+nw_data5<- data.frame(AGE=30, female=0, AfAm=0, Asian=0, race_oth=0, Hispanic=0, educ_hs=0, educ_somecoll=0, educ_college=1, educ_advdeg=0,FAMSIZE=3)
+nw_data6<- data.frame(AGE=30, female=0, AfAm=0, Asian=0, race_oth=0, Hispanic=0, educ_hs=0, educ_somecoll=0, educ_college=0, educ_advdeg=1,FAMSIZE=3)
+total<-do.call("rbind", list(nw_data2, nw_data3, nw_data4, nw_data5, nw_data6))
+total$Labor_Force_Participation<-predict(model_logit1, total, type="response")
+total$education=c("No hs","hs","some college", "college", "advanced degree")
+
+ggplot(data=total, aes(x=factor(education, level=education), y=Labor_Force_Participation, fill=education), geom="point") + geom_bar(stat="identity") + scale_fill_brewer(palette = "Dark2") + xlab("Education") + theme(legend.position = "none") + ggtitle("Labor Force Participation")
+
+```
+For a male of Age 30 of no specific race, most likely white , who is married , with a Family Size of 3, organized by education 
+This shows us that as education increases so does labor force participation increased 
+
+
+```{r}
+#Using
+
+library(stargazer)
+
+stargazer(model_logit1, type="text")
+
+nw_data2<- data.frame(AGE=30, female=1, AfAm=0, Asian=0, race_oth=0, Hispanic=0, educ_hs=0, educ_somecoll=0, educ_college=0, educ_advdeg=0,FAMSIZE=3)
+nw_data3<- data.frame(AGE=30, female=1, AfAm=0, Asian=0, race_oth=0, Hispanic=0, educ_hs=1, educ_somecoll=0, educ_college=0, educ_advdeg=0,FAMSIZE=3)
+nw_data4<- data.frame(AGE=30, female=1, AfAm=0, Asian=0, race_oth=0, Hispanic=0, educ_hs=0, educ_somecoll=1, educ_college=0, educ_advdeg=0,FAMSIZE=3)
+nw_data5<- data.frame(AGE=30, female=1, AfAm=0, Asian=0, race_oth=0, Hispanic=0, educ_hs=0, educ_somecoll=0, educ_college=1, educ_advdeg=0,FAMSIZE=3)
+nw_data6<- data.frame(AGE=30, female=1, AfAm=0, Asian=0, race_oth=0, Hispanic=0, educ_hs=0, educ_somecoll=0, educ_college=0, educ_advdeg=1,FAMSIZE=3)
+total1<-do.call("rbind", list(nw_data2, nw_data3, nw_data4, nw_data5, nw_data6))
+total1$Labor_Force_Participation<-predict(model_logit1, total1, type="response")
+total1$education=c("No hs","hs","some college", "college", "advanced degree")
+
+ggplot(data=total1, aes(x=factor(education, level=education), y=Labor_Force_Participation, fill=education), geom="point") + geom_bar(stat="identity") + scale_fill_brewer(palette = "Dark2") + xlab("Education") + theme(legend.position = "none") + ggtitle("Labor Force Participation")
+
+```
+For a female of Age 30 of no specific race, most likely white , who is married , with a Family Size of 3, organized by education 
+This shows us that as education increases so does labor force participation increased, however we can observe a clear difference between labor force participation between male and female at the no HS and HS level. 
+
+```{r}
+
+LF_gend<-data.frame(education=c("No hs","hs","some college", "college", "advanced degree"), Male=total$Labor_Force_Participation, Female=total1$Labor_Force_Participation, Gender_Difference=total$Labor_Force_Participation-total1$Labor_Force_Participation)
+print(LF_gend)
+
+ggplot(data=LF_gend, aes(x=factor(education, levels=education), y=Gender_Difference, fill=education), geom="point") + geom_bar(stat="identity") + scale_fill_brewer(palette = "Dark2") + xlab("Education") + theme(legend.position = "none") + ggtitle("Gender Difference by Education Level for 30 year old")
+
+```
+We further explore the differences mentioned above and we can clearly see the percent difference is greatest at the no HS level followed by HS level. 
+
+
+```{r}
+#Using
+model_logit1 <- glm(LABFORCE ~ AGE + I(AGE^2) + female + AfAm + Asian + race_oth + Hispanic 
+            + educ_hs + educ_somecoll + educ_college + educ_advdeg + MARST + FOODSTMP + I(AGE*FOODSTMP) + I(AfAm*FOODSTMP) + I(Asian*FOODSTMP) + I(Hispanic*FOODSTMP)
+            ,family = binomial, data = dat_use1)
+
+coefplot(model_logit1, innerCI=2, outerCI=0, intercept = FALSE, title = "Logit Regression Model", color = "pink", ylab = "Predictors")
+
+summary(model_logit1)
+
+```
+
+For the ages on 25-55 we look at individual as well as different interactions based on race, education, marriage status and whether or no specific races have food stamps. 
+We find that females in general are significantly less likely to be in the labor force than men 
+Asian women are even less likely to be in the labor force , this may be due to cultural differences 
+
+
+Having a high school education makes you less likely to be participant in the labor force , while having some college does not mean you are more likely to be in the labor force ( this may be due to college students who are full time and do not work), once you complete college and above your likelihood to be in the labor force increases significantly. 
+
+Martial status , the only significant correlation between your martial status and your participation in the labor force is found if your spouse is absent, you are divorced or never married. 
+
+
+```{r}
+model_logit1 <- glm(LABFORCE ~ AGE + I(AGE^2) + I(female*AfAm) +I(female*Asian) + I(female*race_oth) + I(female*Hispanic) + female + AfAm + Asian + race_oth + Hispanic 
+            + educ_hs + educ_somecoll + educ_college + educ_advdeg 
+            + MARST,
+            family = binomial, data = dat_use1)
+
+summary(model_logit1)
+
+```
+Here we introduce new interactions it is interesting to see that a female African American is much more likely to be in the labor force than any other women of other races . While being an Asian female still makes you very much less likely. 
+The education data stayed largely similar and so did the marriage status  status. 
+
+```{r}
+#model_v1 <- lm(INCWAGE ~ AGE, data = acs2017_ny)
+model_logit3 <- glm(LABFORCE ~ AGE +  I(AGE^2) + educ_hs + educ_somecoll + educ_college + educ_advdeg + NCHILD + FOODSTMP + I(NCHILD*FOODSTMP) + I(AfAm*FOODSTMP) + I(HISPAN*FOODSTMP) + I(below_povertyline*FOODSTMP) + I(below_150poverty*FOODSTMP) + I(below_200poverty*FOODSTMP), family = binomial, data = dat_use1)
+
+summary(model_logit3)
+```
+Here our variables are education, number of children , food stamps, and placement in the poverty line. 
+
+We see that individuals with children are more likely to have had food stamps in the past 12 months
+An African American is less likely than a hispanic to have had received food stamps in the past 12 months
+It makes sense to see that as your are further away from the poverty line you become less likely to have collected food stamps in the past 12 months
+
+
+
+```{r}
+#What other subsets? What changes about results with different subsets?
+
+#For homework, I will ask for predicted values so you can start to figure out how to get those.
+
+#Do the X variables have the expected signs and patterns of significance?
+
+pick_use2 <- (acs2017_ny$AGE > 25) & (acs2017_ny$AGE < 55) & (acs2017_ny$has_AnyHealthIns == 1)
+dat_use2 <- subset(acs2017_ny, pick_use2)
+
+dat_use2$LABFORCE <- droplevels(dat_use2$LABFORCE) # actually not necessary since logit is smart enough to drop unused levels, but helps Dean Foster's personal sense of order
+
+#model_v2 <- lm(INCWAGE ~ AGE, data = acs2017_ny)
+model_logit2 <- glm(LABFORCE ~ AGE +  I(AGE^2) + educ_hs + educ_somecoll + educ_college + educ_advdeg + FOODSTMP + AfAm + HISPAN + I(AfAm*FOODSTMP) + I(HISPAN*FOODSTMP) + I(below_povertyline*FOODSTMP) + I(below_150poverty*FOODSTMP) + I(below_200poverty*FOODSTMP), family = binomial, data = dat_use2)
+
+summary(model_logit2)
+
+```
+We adjusted the subset by adding health insurance 
+We now evaluate labor force participation based on eduaction level , foodstamp use in the last 12 months, race ( african american or hispanic) , and placement in th poverty line.
+We continue to see the similar trend where as your education increases so does your labor force participation. 
+
+Some changes we can observe under the subset is that when you have health insurance your likeliness to have had food stamps increases , we can obersve this from our number  FOODSTMP   -0.2010967 when health insurance is not subset to FOODSTMP 0.0043170 when it is. Subsequently we can see the interactions of poverty line and foodstamps also switch signs. 
+
+
+```{r}
+
+
+model_probit2 <- glm(LABFORCE ~ AGE +  I(AGE^2) + educ_hs + educ_somecoll + educ_college + educ_advdeg + FOODSTMP + I(AfAm*FOODSTMP) + I(HISPAN*FOODSTMP) + I(below_povertyline*FOODSTMP) + I(below_150poverty*FOODSTMP) + I(below_200poverty*FOODSTMP), family = binomial (link= 'probit'), data = dat_use2)
+
+summary(model_probit2)
+#, 
+nw_data<- data.frame(AGE=25:55,  educ_hs=0, educ_somecoll=0, educ_college=0, educ_advdeg=0 , FOODSTMP=1, AfAm=0 , HISPAN=1, below_povertyline=0,below_150poverty=0, below_200poverty=0)
+
+nw_data$yhat<-predict(model_probit2, nw_data, type="response")
+#lines(yhat ~ AGE, data=nw_data)
+
+coefplot(model_probit2, innerCI=2, outerCI=0, intercept = FALSE, title = "Probit Regression Model", color = "yellow", ylab = "Predictors")
+
+plot(nw_data$yhat ~nw_data$AGE , pch = 16, ylim = c(0,1), main = "Labor Force Participation", xlab = "Age", ylab = "Labor Force Status", col = "blue")
+
+nw_data2<- data.frame(AGE=30, educ_hs=1, educ_somecoll=0, educ_college=0, educ_advdeg=0, FOODSTMP=2, AfAm=0 , HISPAN=0, below_povertyline=0,below_150poverty=0, below_200poverty=0)
+nw_data3<- data.frame(AGE=30, educ_hs=1, educ_somecoll=0, educ_college=0, educ_advdeg=0, FOODSTMP=2, AfAm=0 , HISPAN=0, below_povertyline=0,below_150poverty=0, below_200poverty=1)
+nw_data4<- data.frame(AGE=30, educ_hs=1, educ_somecoll=0, educ_college=0, educ_advdeg=0, FOODSTMP=2, AfAm=0 , HISPAN=0, below_povertyline=0,below_150poverty=1, below_200poverty=0)
+nw_data5<- data.frame(AGE=30, educ_hs=1, educ_somecoll=0, educ_college=0, educ_advdeg=0, FOODSTMP=2, AfAm=0 , HISPAN=0, below_povertyline=1,below_150poverty=0, below_200poverty=0)
+
+
+total2<-do.call("rbind", list(nw_data2, nw_data3, nw_data4, nw_data5))
+total2$Labor_Force_Participation<-predict(model_probit2, total2, type="response")
+total2$Income_Poverty_Line=c("Above 200% Poverty Line","Below 200% Poverty Line","Below 150% Poverty Line", "Below Poverty Line")
+print(total2)
+
+ggplot(data=total2, aes(x=factor(Income_Poverty_Line, level=Income_Poverty_Line), y=Labor_Force_Participation, fill=Income_Poverty_Line), geom="point") + geom_bar(stat="identity") + scale_fill_brewer(palette = "Dark2") + xlab("Income Relative to Poverty Line") + theme(legend.position = "none") + ggtitle("Labor Force Participation for 30 year old with a HS education on Food Stamps")
+
+
+```
+In this data we can observe that as you have a higher income relative to the poverty line you have a higher likelihood of being in the labor force. 
+This also shows predicted values for this group of individuals. 
+```{r}
+# Explain if there is a plausible causal link from X variables to Y and not the reverse. Explain your results, giving details about the estimation, some predicted values, and providing any relevant graphics. Impress.
+
+model_probit4 <- glm(educ_advdeg ~ as.factor(LABFORCE), family = binomial (link= 'probit'), data = dat_use2)
+summary(model_probit4)
+
+model_probit5 <- glm(as.factor(FOODSTMP) ~ LABFORCE, family = binomial (link= 'probit'), data = dat_use2)
+summary(model_probit5)
+
+```
+It was not very useful using labor force to predict whether an individual will have an advanced degree.  In our subset 19% of the population had an advanced degree.  Using the probit model with the input of knowing whether they are participating in the labor force we were able predict with 20% accuracy whether they have an advanced degree.  This is only a 1% increase because Labor Force participation is not a good predictor of whether someone has an advanced degree.
+For the second probit model , labor force participation could no be used as a predictor whether someone is on foood stamps because . Both the intercept and the coefficients were negative and probit is a probability model between 0 and 1 , therefore we cannot interpret the data in a logical sense. 
+
+
+
+
+
+```{r}
+model_ols2 <- lm(as.integer(LABFORCE) ~ AGE +  I(AGE^2) + educ_hs + educ_somecoll + educ_college + educ_advdeg + FOODSTMP + I(AfAm*FOODSTMP) + I(HISPAN*FOODSTMP) + I(below_povertyline*FOODSTMP) + I(below_150poverty*FOODSTMP) + I(below_200poverty*FOODSTMP), data = dat_use2)
+
+#values for Labforce are 1 and 2
+
+coefplot(model_ols2, innerCI=2, outerCI=0, intercept = FALSE, title = "Linear Regression Model", color = "red", lab = "Predictors")
+
+summary(model_ols2)
+
+```
+```{r}
+#Also estimate a probit model (details in Lecture Notes) and OLS, with the same X and Y variables. Compare the results, such as coefficients and predicted values. If you're eager, try to split the sample into training and test data, then compare which model predicts better in the sample that it hasn't seen yet
+
+set.seed(654321)
+NN <- length(dat_use2$LABFORCE)
+restrict_1 <- (runif(NN) < 0.5)
+summary(restrict_1)
+dat_train <- subset(dat_use2, restrict_1)
+dat_test <- subset(dat_use2, !restrict_1)
+
+
+model_probit5 <- glm(LABFORCE ~ AGE +  I(AGE^2) + educ_hs + educ_somecoll + educ_college + educ_advdeg + FOODSTMP + I(AfAm*FOODSTMP) + I(HISPAN*FOODSTMP) + I(below_povertyline*FOODSTMP) + I(below_150poverty*FOODSTMP) + I(below_200poverty*FOODSTMP), family = binomial (link= 'probit'), data = dat_train)
+
+summary(model_probit5)
+pred_vals <- predict(model_probit5, dat_test, type = "response")
+pred_model_probit5 <- (pred_vals > 0.5)
+pred_table<-table(pred = pred_model_probit5, true = dat_test$LABFORCE)
+pred_table
+
+print("Our model predicts labor force correctly with this percent accuracy when compared with the test data:")
+paste0(round((pred_table[1,1]+pred_table[2,2])/sum(pred_table)*100,2), "%")
+
+
+```
+Our model predicts correctly with 83.96% accuracy.  This is slightly higher than the 82.6% of the population that is in the labor force.  
+In this example we segmented the groups into both training and testing date to view the efficacy of our model.
